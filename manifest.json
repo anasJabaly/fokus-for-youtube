@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Fokus für YouTube",
+  "version": "1.7.0",
+  "description": "Blockiert Musik- und Unterhaltungsinhalte auf YouTube und schenkt dir einen Moment der Achtsamkeit, bevor Zeit verloren geht.",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_start"
+    }
+  ]
+}

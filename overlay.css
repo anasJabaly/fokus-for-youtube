@@ -1,0 +1,209 @@
+/* Fokus für YouTube — Moment der Achtsamkeit */
+
+#ytfokus-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(240, 235, 222, 0.06) 0%, transparent 45%),
+    linear-gradient(160deg, #0d3b3b 0%, #104a4a 55%, #0b3232 100%);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  animation: ytfokus-fade 0.45s ease-out;
+}
+
+@keyframes ytfokus-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+html.ytfokus-lock, html.ytfokus-lock body {
+  overflow: hidden !important;
+}
+
+.ytfokus-card {
+  max-width: 560px;
+  text-align: center;
+  color: #f0ebde;
+  animation: ytfokus-rise 0.55s 0.1s ease-out backwards;
+}
+
+@keyframes ytfokus-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.ytfokus-mark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 28px;
+  color: #d8b46a;
+  opacity: 0.9;
+}
+
+.ytfokus-card h1 {
+  font-size: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+  color: #f7f3e8;
+}
+
+.ytfokus-reason {
+  font-size: 1.02rem;
+  color: #d8b46a;
+  margin: 0 0 18px;
+  font-weight: 500;
+}
+
+.ytfokus-text {
+  font-size: 1.05rem;
+  line-height: 1.65;
+  color: rgba(240, 235, 222, 0.85);
+  margin: 0 0 26px;
+}
+
+.ytfokus-quote {
+  font-size: 0.92rem;
+  line-height: 1.7;
+  font-style: italic;
+  color: rgba(240, 235, 222, 0.55);
+  border-top: 1px solid rgba(240, 235, 222, 0.15);
+  padding-top: 22px;
+  margin: 0 0 34px;
+}
+
+.ytfokus-actions {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.ytfokus-btn {
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 13px 26px;
+  border-radius: 100px;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s, color 0.2s;
+}
+
+.ytfokus-primary {
+  background: #d8b46a;
+  color: #10312f;
+}
+.ytfokus-primary:hover { background: #f0ebde; transform: translateY(-2px); }
+
+.ytfokus-ghost {
+  background: transparent;
+  border-color: rgba(240, 235, 222, 0.3);
+  color: rgba(240, 235, 222, 0.75);
+}
+.ytfokus-ghost:hover { border-color: rgba(240, 235, 222, 0.6); }
+.ytfokus-ghost:disabled { opacity: 0.5; cursor: wait; }
+
+/* Optional: Startseiten-Feed ausblenden */
+html.ytfokus-nofeed ytd-rich-grid-renderer {
+  display: none !important;
+}
+
+/* Feed-Filter: ausgeblendete Empfehlungen */
+.ytfokus-hidden {
+  display: none !important;
+}
+
+/* ===== Shorts komplett entfernen (Regale, Kacheln, Sidebar-Eintrag) ===== */
+html.ytfokus-noshorts ytd-reel-shelf-renderer,
+html.ytfokus-noshorts ytd-rich-shelf-renderer[is-shorts],
+html.ytfokus-noshorts grid-shelf-view-model,
+html.ytfokus-noshorts ytd-shorts-lockup-view-model,
+html.ytfokus-noshorts ytm-shorts-lockup-view-model,
+html.ytfokus-noshorts ytm-shorts-lockup-view-model-v2,
+html.ytfokus-noshorts ytd-guide-entry-renderer:has(a[title="Shorts"]),
+html.ytfokus-noshorts ytd-mini-guide-entry-renderer:has(a[title="Shorts"]) {
+  display: none !important;
+}
+
+/* ===== Kanal-Blockieren-Button auf Kacheln ===== */
+ytd-rich-item-renderer, ytd-video-renderer,
+ytd-compact-video-renderer, ytd-grid-video-renderer,
+yt-lockup-view-model {
+  position: relative;
+}
+.ytfokus-block-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 10;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(13, 59, 59, 0.85);
+  color: #f0ebde;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+}
+ytd-rich-item-renderer:hover .ytfokus-block-btn,
+ytd-video-renderer:hover .ytfokus-block-btn,
+ytd-compact-video-renderer:hover .ytfokus-block-btn,
+ytd-grid-video-renderer:hover .ytfokus-block-btn,
+yt-lockup-view-model:hover .ytfokus-block-btn,
+.ytfokus-block-btn:hover {
+  opacity: 1;
+}
+.ytfokus-block-btn:hover {
+  background: #b3402e;
+}
+
+/* ===== Erlauben-Button (✓) neben dem Blockieren-Button ===== */
+.ytfokus-allow-btn {
+  position: absolute;
+  top: 6px;
+  right: 38px;
+  z-index: 10;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(13, 59, 59, 0.85);
+  color: #f0ebde;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.15s, background 0.15s;
+}
+ytd-rich-item-renderer:hover .ytfokus-allow-btn,
+ytd-video-renderer:hover .ytfokus-allow-btn,
+ytd-compact-video-renderer:hover .ytfokus-allow-btn,
+ytd-grid-video-renderer:hover .ytfokus-allow-btn,
+yt-lockup-view-model:hover .ytfokus-allow-btn,
+.ytfokus-allow-btn:hover {
+  opacity: 1;
+}
+.ytfokus-allow-btn:hover { background: #2e7d4f; }
+.ytfokus-allow-btn.ytfokus-done { background: #2e7d4f; opacity: 1; }
+
+/* ===== "Mehr von YouTube"-Sektion ausblenden (Music/Premium/Kids) ===== */
+html.ytfokus-hideextras ytd-guide-section-renderer:has(a[href*="music.youtube.com"]),
+html.ytfokus-hideextras ytd-guide-entry-renderer:has(a[title="YouTube Music"]),
+html.ytfokus-hideextras ytd-guide-entry-renderer:has(a[title="YouTube Premium"]),
+html.ytfokus-hideextras ytd-guide-entry-renderer:has(a[title="YouTube Kids"]),
+html.ytfokus-hideextras ytd-mini-guide-entry-renderer:has(a[title="YouTube Music"]) {
+  display: none !important;
+}
+
+/* ===== Werbung abdunkeln, solange sie läuft (Ton wird per JS gemutet) ===== */
+html.ytfokus-admute #movie_player.ad-showing video {
+  filter: brightness(0.06) !important;
+}

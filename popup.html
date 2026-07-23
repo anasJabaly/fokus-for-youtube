@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 320px;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      margin: 0;
+      background: #0f3d3d;
+      color: #f0ebde;
+    }
+    header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid rgba(240,235,222,0.15);
+    }
+    header h1 { font-size: 1.05rem; margin: 0; }
+    header p { font-size: 0.75rem; margin: 4px 0 0; color: rgba(240,235,222,0.55); }
+    .section { padding: 14px 18px; }
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 0;
+      font-size: 0.88rem;
+    }
+    .row small { display: block; color: rgba(240,235,222,0.5); font-size: 0.72rem; margin-top: 2px; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: #d8b46a; cursor: pointer; }
+    label.kw { font-size: 0.78rem; color: rgba(240,235,222,0.6); display: block; margin-bottom: 6px; }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      height: 92px;
+      background: #0b3232;
+      color: #f0ebde;
+      border: 1px solid rgba(240,235,222,0.2);
+      border-radius: 8px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.78rem;
+      padding: 8px;
+      resize: vertical;
+    }
+    button {
+      width: 100%;
+      margin-top: 10px;
+      padding: 10px;
+      border: none;
+      border-radius: 100px;
+      background: #d8b46a;
+      color: #10312f;
+      font-weight: 600;
+      font-size: 0.88rem;
+      cursor: pointer;
+    }
+    button:hover { background: #f0ebde; }
+    #saved { text-align: center; font-size: 0.75rem; color: #9fd8a8; height: 14px; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Fokus für YouTube</h1>
+    <p>Deine Zeit gehört dir.</p>
+  </header>
+
+  <div class="section">
+    <div class="row">
+      <span>Aktiviert</span>
+      <input type="checkbox" id="enabled">
+    </div>
+    <div class="row">
+      <span>Shorts blockieren<small>Endlos-Scrollen komplett sperren</small></span>
+      <input type="checkbox" id="blockShorts">
+    </div>
+    <div class="row">
+      <span>Startseiten-Feed ausblenden<small>Nur Suche &amp; Abos nutzen</small></span>
+      <input type="checkbox" id="hideHomeFeed">
+    </div>
+    <div class="row">
+      <span>Strikter Modus<small>Kein „trotzdem ansehen"-Button</small></span>
+      <input type="checkbox" id="strictMode">
+    </div>
+    <div class="row">
+      <span>Music/Premium-Links ausblenden<small>„Mehr von YouTube" in der Seitenleiste</small></span>
+      <input type="checkbox" id="hideYtExtras">
+    </div>
+    <div class="row">
+      <span>Werbung stumm &amp; dunkel<small>Ton aus und Bild schwarz, solange Werbung läuft</small></span>
+      <input type="checkbox" id="muteAds">
+    </div>
+  </div>
+
+  <div class="section" style="border-top:1px solid rgba(240,235,222,0.15);">
+    <div class="row">
+      <span>Feed-Filter<small>Empfehlungen auf Start- &amp; Videoseiten</small></span>
+      <select id="feedFilter" style="background:#0b3232;color:#f0ebde;border:1px solid rgba(240,235,222,0.2);border-radius:6px;padding:5px 8px;font-size:0.8rem;">
+        <option value="off">Aus</option>
+        <option value="blocklist">Blockierte entfernen</option>
+        <option value="whitelist">Nur erlaubte Themen</option>
+      </select>
+    </div>
+    <label class="kw" for="allowKeywords">Erlaubte Themen (Titel oder Kanal, einer pro Zeile):</label>
+    <textarea id="allowKeywords" spellcheck="false" style="height:78px;"></textarea>
+  </div>
+
+  <div class="section">
+    <label class="kw" for="blockedChannels">Blockierte Kanäle (einer pro Zeile — oder ⊘-Button auf einer Video-Kachel):</label>
+    <textarea id="blockedChannels" spellcheck="false" style="height:64px;"></textarea>
+  </div>
+
+  <div class="section">
+    <label class="kw" for="keywords">Blockierte Begriffe (einer pro Zeile):</label>
+    <textarea id="keywords" spellcheck="false"></textarea>
+    <button id="save">Speichern</button>
+    <div id="saved"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
