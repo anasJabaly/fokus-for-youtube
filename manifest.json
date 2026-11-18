@@ -1,27 +1,39 @@
 {
   "manifest_version": 3,
   "name": "Fokus für YouTube",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Blockiert Musik- und Unterhaltungsinhalte auf YouTube und schenkt dir einen Moment der Achtsamkeit, bevor Zeit verloren geht.",
+  "minimum_chrome_version": "111",
   "permissions": ["storage"],
-  "host_permissions": ["*://*.youtube.com/*"],
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
   },
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "src/popup.html",
     "default_icon": {
-      "16": "icon16.png",
-      "48": "icon48.png"
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
     }
   },
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"],
-      "css": ["overlay.css"],
+      "js": ["src/shared.js", "src/content.js"],
+      "css": ["src/overlay.css"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["src/bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://www.google.com/search*", "*://www.google.de/search*"],
+      "js": ["src/shared.js", "src/google.js"],
+      "css": ["src/overlay.css"],
       "run_at": "document_start"
     }
   ]

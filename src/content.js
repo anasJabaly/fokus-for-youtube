@@ -1,5 +1,5 @@
 /* ============================================================
-   Fokus für YouTube — Content Script
+   Fokus für YouTube — Content Script (YouTube)
    Blockiert Musik-/Unterhaltungsinhalte + Shorts
    und zeigt einen "Moment der Achtsamkeit".
    ============================================================ */
@@ -7,217 +7,204 @@
 (() => {
   'use strict';
 
-  // ---- Standard-Einstellungen ----
-  const DEFAULTS = {
-    enabled: true,
-    blockShorts: true,
-    hideHomeFeed: false,
-    strictMode: true,          // true = kein "trotzdem ansehen"
-    waitSeconds: 15,           // Wartezeit im Achtsamkeits-Modus
-    feedFilter: 'whitelist',   // 'off' | 'blocklist' | 'whitelist'
-    blockedChannels: [],       // per ⊘-Button blockierte Kanäle
-    hideYtExtras: true,        // YouTube-Music/Premium/Kids-Links ausblenden
-    muteAds: true,             // Werbung stummschalten & abdunkeln
-    allowKeywords: [
-      // Deen
-      'quran', 'koran', 'surah', 'sura', 'tafsir', 'hadith', 'islam',
-      'dua', 'gebet', 'ramadan', 'seerah', 'arabisch',
-      // Studium & Produktivität
-      'study', 'lernen', 'uni', 'vorlesung', 'klausur', 'prüfung',
-      'tutorial', 'kurs', 'erklärt', 'mathe', 'physik', 'informatik',
-      'programmieren', 'coding', 'java', 'python', 'javascript',
-      'linux', 'security', 'netzwerk', 'doku', 'dokumentation',
-      'focus', 'produktiv', 'pomodoro'
-    ],
-    keywords: [
-      // Deutsch
-      'musik', 'lied', 'songtext', 'konzert', 'musikvideo',
-      // Englisch
-      'music', 'song', 'songs', 'lyrics', 'lyric', 'official video',
-      'official audio', 'music video', 'mv', 'album', 'single',
-      'remix', 'cover', 'karaoke', 'playlist musik',
-      // Genres
-      'rap', 'hip hop', 'hiphop', 'pop hits', 'techno', 'edm',
-      'deutschrap', 'charts', 'lofi', 'lo-fi', 'beats to', 'mix -', 'mix –', 'nasheed',
-      // Arabisch (Musik / Lieder)
-      'اغاني', 'أغاني', 'اغنية', 'أغنية', 'موسيقى'
-    ]
-  };
+  const F = globalThis.YTFOKUS;
+  if (!F) return;
 
-  let cfg = { ...DEFAULTS };
-  let overlayShown = false;
+  const IS_MUSIC_HOST = location.hostname === 'music.youtube.com';
+  const MUSIC_GENRES = new Set(['music', 'musik', 'musique', 'música', 'musica', 'موسيقى']);
+  const ROOT_CLASSES = ['ytfokus-nofeed', 'ytfokus-noshorts', 'ytfokus-hideextras', 'ytfokus-admute'];
 
-  // ---- Einstellungen laden (und bei Änderung aktualisieren) ----
-  const storage = (typeof browser !== 'undefined' ? browser : chrome).storage;
+  let cfg = { ...F.DEFAULTS };
+  let rules = { block: [], allow: [] };
 
-  function loadConfig() {
-    return new Promise(resolve => {
-      storage.sync.get(DEFAULTS, items => {
-        cfg = { ...DEFAULTS, ...items };
-        resolve(cfg);
-      });
-    });
+  function applyConfig(next) {
+    cfg = next;
+    rules = { block: F.compile(cfg.keywords), allow: F.compile(cfg.allowKeywords) };
   }
 
-  storage.onChanged.addListener(() => loadConfig().then(runChecks));
+  chrome.storage.onChanged.addListener(() => F.loadConfig().then(c => {
+    applyConfig(c);
+    unblock();        // mit den neuen Einstellungen neu bewerten
+    runChecks();
+  }));
 
   // ---- Hilfsfunktionen ----
-  const norm = s => (s || '').toLowerCase();
-
-  function matchesKeywords(text) {
-    const t = norm(text);
-    return cfg.keywords.some(k => k && t.includes(norm(k)));
-  }
+  const norm = F.norm;
 
   function getSearchQuery() {
-    const p = new URLSearchParams(location.search);
-    return p.get('search_query') || '';
+    return new URLSearchParams(location.search).get('search_query') || '';
   }
 
-  function getVideoGenre() {
-    // YouTube setzt <meta itemprop="genre" content="Music"> auf Watch-Seiten
+  function currentVideoId() {
+    return new URLSearchParams(location.search).get('v') || '';
+  }
+
+  /** Eindeutiger Schlüssel der aktuellen Seite (für Overlay und Freigabe). */
+  function pageKey() {
+    if (IS_MUSIC_HOST) return 'music';
+    const path = location.pathname;
+    if (path === '/watch') return 'watch:' + currentVideoId();
+    if (path === '/results') return 'results:' + getSearchQuery();
+    return path;
+  }
+
+  // ---- Video-Infos: bevorzugt aus dem Player (bridge.js), sonst aus dem HTML ----
+  let bridgeInfo = null;
+  document.addEventListener('ytfokus-info', e => {
+    try {
+      const info = JSON.parse(e.detail);
+      if (info && typeof info.videoId === 'string') bridgeInfo = info;
+    } catch (err) { /* ignorieren */ }
+  });
+
+  function askBridge() {
+    document.dispatchEvent(new CustomEvent('ytfokus-ask'));
+  }
+
+  function metaGenre(videoId) {
     const meta = document.querySelector('meta[itemprop="genre"]');
-    return meta ? meta.getAttribute('content') : '';
+    if (!meta) return '';
+    // Nach einem Klick von Video zu Video kann die Angabe noch vom alten Video stammen.
+    const scope = meta.parentElement || document;
+    const idMeta = scope.querySelector('meta[itemprop="identifier"], meta[itemprop="videoId"]');
+    if (idMeta && idMeta.content && idMeta.content !== videoId) return '';
+    return meta.getAttribute('content') || '';
   }
 
-  function getVideoTitle() {
-    const meta = document.querySelector('meta[name="title"]');
-    if (meta && meta.content) return meta.content;
-    const h1 = document.querySelector('h1.ytd-watch-metadata, h1.title');
-    return h1 ? h1.textContent : document.title;
+  function domTitle() {
+    const h1 = document.querySelector('h1.ytd-watch-metadata, ytd-watch-metadata h1, h1.title');
+    if (h1 && h1.textContent.trim()) return h1.textContent;
+    return document.title.replace(/^\(\d+\)\s*/, '').replace(/\s*-\s*YouTube\s*$/, '');
   }
 
-  // ---- Overlay: Moment der Achtsamkeit ----
-  function showOverlay(reason) {
-    if (overlayShown) return;
-    overlayShown = true;
-
-    // Video sofort stoppen
-    stopPlayback();
-    const stopInterval = setInterval(stopPlayback, 500);
-
-    const wrap = document.createElement('div');
-    wrap.id = 'ytfokus-overlay';
-    wrap.innerHTML = `
-      <div class="ytfokus-card">
-        <div class="ytfokus-mark" aria-hidden="true">
-          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <circle cx="24" cy="24" r="13"/>
-            <line x1="24" y1="15" x2="24" y2="33"/>
-          </svg>
-        </div>
-        <h1>Einen Moment.</h1>
-        <p class="ytfokus-reason">${reason}</p>
-        <p class="ytfokus-text">
-          Du hast dir vorgenommen, deine Zeit bewusster zu nutzen.
-          Dieser Inhalt gehört nicht dazu — und das hier ist deine Erinnerung daran.
-        </p>
-        <p class="ytfokus-quote">„Nutze fünf, bevor fünf kommen: deine Jugend vor dem Alter, deine Gesundheit vor der Krankheit, deinen Reichtum vor der Armut, deine freie Zeit vor der Beschäftigung und dein Leben vor dem Tod."</p>
-        <div class="ytfokus-actions">
-          <button id="ytfokus-back" class="ytfokus-btn ytfokus-primary">Zurück zur Startseite</button>
-          ${cfg.strictMode ? '' : `<button id="ytfokus-wait" class="ytfokus-btn ytfokus-ghost">Trotzdem ansehen (${cfg.waitSeconds}s warten)</button>`}
-        </div>
-      </div>`;
-
-    document.documentElement.appendChild(wrap);
-    document.documentElement.classList.add('ytfokus-lock');
-
-    document.getElementById('ytfokus-back').addEventListener('click', () => {
-      clearInterval(stopInterval);
-      location.href = 'https://www.youtube.com/';
-    });
-
-    const waitBtn = document.getElementById('ytfokus-wait');
-    if (waitBtn) {
-      waitBtn.addEventListener('click', () => {
-        let left = cfg.waitSeconds;
-        waitBtn.disabled = true;
-        const tick = setInterval(() => {
-          left -= 1;
-          waitBtn.textContent = `Noch ${left} Sekunden …`;
-          if (left <= 0) {
-            clearInterval(tick);
-            clearInterval(stopInterval);
-            removeOverlay();
-          }
-        }, 1000);
-      });
-    }
-  }
-
-  function removeOverlay() {
-    const el = document.getElementById('ytfokus-overlay');
-    if (el) el.remove();
-    document.documentElement.classList.remove('ytfokus-lock');
-    overlayShown = false;
-  }
+  // ---- Sperren / Freigeben ----
+  let stopTimer = null;
+  let watchTimer = null;
+  let overlayKey = null;      // Seite, für die das Overlay gerade gilt
+  let bypassKey = null;       // Seite, die nach der Wartezeit freigegeben wurde
+  const mutedByOverlay = new Set();
 
   function stopPlayback() {
     document.querySelectorAll('video').forEach(v => {
-      try { v.pause(); v.muted = true; } catch (e) { /* ignore */ }
+      try {
+        v.pause();
+        if (!v.muted) { v.muted = true; mutedByOverlay.add(v); }
+      } catch (e) { /* ignorieren */ }
     });
   }
 
+  function block(reason) {
+    const key = pageKey();
+    if (bypassKey === key) return;
+    if (F.overlay.shown && overlayKey === key) return;
+    unblock();
+    overlayKey = key;
+    stopPlayback();
+    stopTimer = setInterval(stopPlayback, 500);
+    F.overlay.show({
+      reason,
+      backLabel: 'Zurück zur Startseite',
+      onBack: () => { location.href = 'https://www.youtube.com/'; },
+      allowWait: !cfg.strictMode,
+      waitSeconds: cfg.waitSeconds,
+      onProceed: () => {
+        bypassKey = key;
+        unblock();
+        const v = document.querySelector('#movie_player video');
+        if (v) { try { const p = v.play(); if (p && p.catch) p.catch(() => {}); } catch (e) { /* ignorieren */ } }
+      }
+    });
+  }
+
+  function unblock() {
+    if (stopTimer) { clearInterval(stopTimer); stopTimer = null; }
+    F.overlay.hide();
+    overlayKey = null;
+    // Nur den Ton zurückgeben, den wir selbst abgeschaltet haben
+    mutedByOverlay.forEach(v => { try { v.muted = false; } catch (e) { /* ignorieren */ } });
+    mutedByOverlay.clear();
+  }
+
   // ---- Prüf-Logik ----
-  function runChecks() {
-    if (!cfg.enabled) { removeOverlay(); return; }
-
-    const path = location.pathname;
-
-    // 1) Shorts komplett blockieren
-    if (cfg.blockShorts && path.startsWith('/shorts')) {
-      showOverlay('Shorts sind blockiert — endloses Scrollen frisst am meisten Zeit.');
-      return;
+  /** Gründe, die sofort aus der Adresse erkennbar sind. */
+  function urlVerdict() {
+    if (IS_MUSIC_HOST) {
+      return cfg.blockYtMusic ? 'YouTube Music ist blockiert.' : null;
     }
-
-    // 2) Suche nach blockierten Begriffen
+    const path = location.pathname;
+    if (cfg.blockShorts && path.startsWith('/shorts')) {
+      return 'Shorts sind blockiert — endloses Scrollen frisst am meisten Zeit.';
+    }
     if (path === '/results') {
       const q = getSearchQuery();
-      if (q && matchesKeywords(q)) {
-        showOverlay(`Deine Suche „${q}" enthält blockierte Inhalte.`);
-        return;
-      }
+      if (q && F.matches(q, rules.block)) return `Deine Suche „${q}" enthält blockierte Inhalte.`;
     }
+    return null;
+  }
 
-    // 3) Watch-Seiten: Genre "Music" oder Titel-Keywords
-    if (path === '/watch') {
-      const check = () => {
-        const genre = getVideoGenre();
-        const title = getVideoTitle();
-        if (norm(genre) === 'music' || norm(genre) === 'musik') {
-          showOverlay('Dieses Video ist in der Kategorie Musik eingeordnet.');
-          return true;
-        }
-        if (matchesKeywords(title)) {
-          showOverlay('Der Titel dieses Videos enthält blockierte Begriffe.');
-          return true;
-        }
-        return false;
-      };
-      // Metadaten laden verzögert — mehrfach prüfen
-      if (!check()) {
-        let tries = 0;
-        const iv = setInterval(() => {
-          tries += 1;
-          if (check() || tries > 10) clearInterval(iv);
-        }, 500);
-      }
+  /** Grund für die aktuelle Watch-Seite oder null. trustDom=false: nur Player-Daten. */
+  function watchVerdict(trustDom) {
+    const id = currentVideoId();
+    const info = bridgeInfo && bridgeInfo.videoId === id ? bridgeInfo : null;
+    if (!info && !trustDom) return null;
+    const genre = info ? info.category : metaGenre(id);
+    const title = info ? info.title : domTitle();
+    if (MUSIC_GENRES.has(norm(genre).trim())) return 'Dieses Video ist in der Kategorie Musik eingeordnet.';
+    if (title && F.matches(title, rules.block)) return 'Der Titel dieses Videos enthält blockierte Begriffe.';
+    return null;
+  }
+
+  let firstCheck = true;
+  function checkWatch() {
+    askBridge();
+    // Direkt nach einem Klick von Video zu Video zeigt das HTML oft noch das alte Video.
+    // Deshalb dem HTML nur beim ersten Seitenaufruf sofort trauen.
+    const now = watchVerdict(firstCheck);
+    if (now) { block(now); return; }
+    let tries = 0;
+    watchTimer = setInterval(() => {
+      tries += 1;
+      askBridge();
+      const reason = watchVerdict(true);
+      if (reason) block(reason);
+      if (reason || tries >= 12) { clearInterval(watchTimer); watchTimer = null; }
+    }, 500);
+  }
+
+  function runChecks() {
+    if (watchTimer) { clearInterval(watchTimer); watchTimer = null; }
+    const root = document.documentElement;
+
+    if (!cfg.enabled) {
+      unblock();
+      ROOT_CLASSES.forEach(c => root.classList.remove(c));
+      document.querySelectorAll('.ytfokus-hidden').forEach(el => el.classList.remove('ytfokus-hidden'));
       return;
     }
 
-    // 4) Optional: Startseiten-Feed ausblenden (weniger Sog-Wirkung)
-    if (cfg.hideHomeFeed && (path === '/' || path === '')) {
-      document.documentElement.classList.add('ytfokus-nofeed');
+    const path = location.pathname;
+    const key = pageKey();
+    if (bypassKey && bypassKey !== key) bypassKey = null;
+
+    root.classList.toggle('ytfokus-nofeed',
+      !!cfg.hideHomeFeed && !IS_MUSIC_HOST && (path === '/' || path === ''));
+
+    const reason = urlVerdict();
+    if (reason) {
+      block(reason);
+    } else if (!IS_MUSIC_HOST && path === '/watch') {
+      // Overlay einer anderen Seite entfernen, dann dieses Video prüfen
+      if (F.overlay.shown && overlayKey !== key) unblock();
+      checkWatch();
     } else {
-      document.documentElement.classList.remove('ytfokus-nofeed');
+      unblock();
     }
+    firstCheck = false;
 
-    // Auf erlaubten Seiten: Overlay entfernen (z.B. nach Navigation)
-    removeOverlay();
-
-    // Empfehlungs-Feed filtern
-    filterFeed();
-    startFeedObserver();
+    if (!IS_MUSIC_HOST) {
+      filterFeed();
+      startFeedObserver();
+    }
   }
 
   // ============================================================
@@ -264,67 +251,55 @@
     return !!tile.querySelector('a[href^="/shorts"], a[href*="/shorts/"]');
   }
 
-  function matchesAllow(text) {
-    const t = norm(text);
-    return cfg.allowKeywords.some(k => k && t.includes(norm(k)));
-  }
-
   function matchesBlockedChannel(channelName) {
     const c = norm(channelName);
     if (!c) return false;
     return (cfg.blockedChannels || []).some(b => b && c.includes(norm(b)));
   }
 
-  function blockChannel(name) {
+  function addToList(key, name) {
     if (!name) return;
-    const list = cfg.blockedChannels || [];
-    if (!list.some(b => norm(b) === norm(name))) {
-      list.push(name);
-      cfg.blockedChannels = list;
-      storage.sync.set({ blockedChannels: list });
-    }
+    const list = Array.isArray(cfg[key]) ? cfg[key].slice() : [];
+    if (list.some(b => norm(b) === norm(name))) return;
+    list.push(name);
+    cfg[key] = list;
+    applyConfig(cfg);
+    chrome.storage.sync.set({ [key]: list }, () => {
+      if (chrome.runtime.lastError) console.warn('[Fokus] Speichern fehlgeschlagen:', chrome.runtime.lastError.message);
+    });
     filterFeed();
   }
 
-  function allowChannel(name) {
-    if (!name) return;
-    const list = cfg.allowKeywords || [];
-    if (!list.some(b => norm(b) === norm(name))) {
-      list.push(name);
-      cfg.allowKeywords = list;
-      storage.sync.set({ allowKeywords: list });
-    }
-    filterFeed();
-  }
-
-  function injectBlockButton(tile) {
+  function injectButtons(tile) {
     if (tile.dataset.ytfokusBtn) return;
+    if (!tileChannel(tile)) return;           // Kanal noch nicht geladen: später erneut versuchen
     tile.dataset.ytfokusBtn = '1';
-    const ch = tileChannel(tile);
-    if (!ch) return;
 
-    const block = document.createElement('button');
-    block.className = 'ytfokus-block-btn';
-    block.title = `Kanal „${ch}" blockieren — nie mehr vorschlagen`;
-    block.textContent = '⊘';
-    block.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      blockChannel(ch);
-    }, true);
+    // YouTube verwendet Kacheln für andere Videos wieder.
+    // Deshalb den Kanal immer erst beim Klick bzw. Überfahren auslesen.
+    const make = (cls, symbol, label, onClick) => {
+      const btn = document.createElement('button');
+      btn.className = cls;
+      btn.textContent = symbol;
+      btn.addEventListener('mouseenter', () => { btn.title = label(tileChannel(tile)); });
+      btn.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        onClick(tileChannel(tile), btn);
+      }, true);
+      return btn;
+    };
 
-    const allow = document.createElement('button');
-    allow.className = 'ytfokus-allow-btn';
-    allow.title = `Kanal „${ch}" erlauben — mehr davon zeigen`;
-    allow.textContent = '✓';
-    allow.addEventListener('click', (e) => {
-      e.preventDefault(); e.stopPropagation();
-      allowChannel(ch);
-      allow.classList.add('ytfokus-done');
-      setTimeout(() => allow.classList.remove('ytfokus-done'), 1200);
-    }, true);
+    tile.appendChild(make('ytfokus-block-btn', '⊘',
+      ch => `Kanal „${ch}" blockieren — nie mehr vorschlagen`,
+      ch => addToList('blockedChannels', ch)));
 
-    tile.appendChild(block);
-    tile.appendChild(allow);
+    tile.appendChild(make('ytfokus-allow-btn', '✓',
+      ch => `Kanal „${ch}" erlauben — mehr davon zeigen`,
+      (ch, btn) => {
+        addToList('allowKeywords', ch);
+        btn.classList.add('ytfokus-done');
+        setTimeout(() => btn.classList.remove('ytfokus-done'), 1200);
+      }));
   }
 
   // ---- Werbung stummschalten & abdunkeln (kein Ad-Blocking!) ----
@@ -341,45 +316,43 @@
   }
 
   function filterFeed() {
-    if (!cfg.enabled) return;
+    if (!cfg.enabled || IS_MUSIC_HOST) return;
 
     // Shorts-Regale & -Kacheln komplett entfernen
     document.documentElement.classList.toggle('ytfokus-noshorts', !!cfg.blockShorts);
     document.documentElement.classList.toggle('ytfokus-hideextras', !!cfg.hideYtExtras);
 
-    if (cfg.feedFilter === 'off' && !cfg.blockShorts && !(cfg.blockedChannels || []).length) return;
+    const filtering = cfg.feedFilter !== 'off' || cfg.blockShorts || (cfg.blockedChannels || []).length > 0;
 
-    let hidden = 0, seen = 0;
     document.querySelectorAll(TILE_SELECTOR).forEach(tile => {
       try {
-      // Verschachtelte Treffer überspringen (neues Markup steckt oft in altem Container)
-      if (tile.parentElement && tile.parentElement.closest(TILE_SELECTOR)) return;
+        // Verschachtelte Treffer überspringen (neues Markup steckt oft in altem Container)
+        if (tile.parentElement && tile.parentElement.closest(TILE_SELECTOR)) return;
 
-      const text = tileText(tile);
-      if (!text.trim()) return; // noch nicht geladen
-      seen++;
+        if (!filtering) { tile.classList.remove('ytfokus-hidden'); return; }
 
-      let hide = false;
+        const text = tileText(tile);
+        if (!text.trim()) return; // noch nicht geladen
 
-      // 1) Shorts-Kacheln (auch in Suchergebnissen als normale Kacheln getarnt)
-      if (cfg.blockShorts && tileIsShort(tile)) hide = true;
+        let hide = false;
 
-      // 2) Blockierte Kanäle — gewinnen immer
-      if (!hide && matchesBlockedChannel(tileChannel(tile))) hide = true;
+        // 1) Shorts-Kacheln (auch in Suchergebnissen als normale Kacheln getarnt)
+        if (cfg.blockShorts && tileIsShort(tile)) hide = true;
 
-      // 3) Keyword-Filter
-      if (!hide && cfg.feedFilter === 'whitelist') {
-        hide = !matchesAllow(text) || matchesKeywords(text);
-      } else if (!hide && cfg.feedFilter === 'blocklist') {
-        hide = matchesKeywords(text);
-      }
+        // 2) Blockierte Kanäle — gewinnen immer
+        if (!hide && matchesBlockedChannel(tileChannel(tile))) hide = true;
 
-      tile.classList.toggle('ytfokus-hidden', hide);
-      if (hide) hidden++;
-      if (!hide) injectBlockButton(tile);
+        // 3) Keyword-Filter
+        if (!hide && cfg.feedFilter === 'whitelist') {
+          hide = !F.matches(text, rules.allow) || F.matches(text, rules.block);
+        } else if (!hide && cfg.feedFilter === 'blocklist') {
+          hide = F.matches(text, rules.block);
+        }
+
+        tile.classList.toggle('ytfokus-hidden', hide);
+        if (!hide) injectButtons(tile);
       } catch (err) { /* einzelne Kachel ignorieren */ }
     });
-    if (seen > 0) console.log(`[Fokus] ${seen} Kacheln geprüft, ${hidden} ausgeblendet (Modus: ${cfg.feedFilter})`);
   }
 
   // Beobachtet nachgeladene Inhalte (YouTube lädt beim Scrollen nach)
@@ -399,10 +372,12 @@
   window.addEventListener('popstate', runChecks);
   document.addEventListener('DOMContentLoaded', runChecks);
 
-  loadConfig().then(() => {
-    console.log('[Fokus] Version 1.7 gestartet · aktiviert:', cfg.enabled, '· Feed-Filter:', cfg.feedFilter);
+  F.loadConfig().then(c => {
+    applyConfig(c);
     runChecks();
-    // Fallback: regelmäßig filtern, falls YouTube-Events nicht feuern
-    setInterval(() => { if (cfg.enabled) { filterFeed(); adWatch(); } }, 1500);
+    // Werbung braucht regelmäßiges Nachsehen; der Feed als Sicherheitsnetz,
+    // falls YouTube-Events einmal nicht feuern
+    setInterval(() => { if (cfg.enabled && !IS_MUSIC_HOST) adWatch(); }, 1000);
+    setInterval(() => { if (cfg.enabled) filterFeed(); }, 3000);
   });
 })();

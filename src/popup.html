@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <style>
     body {
-      width: 320px;
+      width: 330px;
       font-family: "Segoe UI", system-ui, sans-serif;
       margin: 0;
       background: #0f3d3d;
@@ -17,6 +17,7 @@
     header h1 { font-size: 1.05rem; margin: 0; }
     header p { font-size: 0.75rem; margin: 4px 0 0; color: rgba(240,235,222,0.55); }
     .section { padding: 14px 18px; }
+    .section + .section { border-top: 1px solid rgba(240,235,222,0.15); }
     .row {
       display: flex;
       align-items: center;
@@ -25,17 +26,24 @@
       padding: 8px 0;
       font-size: 0.88rem;
     }
-    .row small { display: block; color: rgba(240,235,222,0.5); font-size: 0.72rem; margin-top: 2px; }
-    input[type="checkbox"] { width: 18px; height: 18px; accent-color: #d8b46a; cursor: pointer; }
+    .row small, .hint { display: block; color: rgba(240,235,222,0.5); font-size: 0.72rem; margin-top: 2px; }
+    .hint { margin: 6px 0 0; line-height: 1.45; }
+    .hint code { color: #d8b46a; font-family: ui-monospace, monospace; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: #d8b46a; cursor: pointer; flex: none; }
     label.kw { font-size: 0.78rem; color: rgba(240,235,222,0.6); display: block; margin-bottom: 6px; }
-    textarea {
-      width: 100%;
-      box-sizing: border-box;
-      height: 92px;
+    textarea, select, input[type="number"] {
       background: #0b3232;
       color: #f0ebde;
       border: 1px solid rgba(240,235,222,0.2);
       border-radius: 8px;
+      font-size: 0.8rem;
+    }
+    select, input[type="number"] { padding: 5px 8px; border-radius: 6px; }
+    input[type="number"] { width: 58px; }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      height: 92px;
       font-family: ui-monospace, monospace;
       font-size: 0.78rem;
       padding: 8px;
@@ -53,8 +61,26 @@
       font-size: 0.88rem;
       cursor: pointer;
     }
-    button:hover { background: #f0ebde; }
-    #saved { text-align: center; font-size: 0.75rem; color: #9fd8a8; height: 14px; margin-top: 6px; }
+    button:hover:not(:disabled) { background: #f0ebde; }
+    button.ghost {
+      background: transparent;
+      color: rgba(240,235,222,0.75);
+      border: 1px solid rgba(240,235,222,0.3);
+      font-weight: 500;
+    }
+    button.ghost:hover:not(:disabled) { background: rgba(240,235,222,0.1); }
+    :disabled { opacity: 0.45; cursor: not-allowed; }
+    #lockbar {
+      padding: 12px 18px;
+      background: #0b3232;
+      border-bottom: 1px solid rgba(240,235,222,0.15);
+      font-size: 0.8rem;
+      line-height: 1.45;
+    }
+    #lockbar[hidden] { display: none; }
+    #lockbar button { margin-top: 8px; }
+    #saved { text-align: center; font-size: 0.75rem; color: #9fd8a8; min-height: 14px; margin-top: 6px; }
+    #saved.error { color: #f0a08c; }
   </style>
 </head>
 <body>
@@ -62,6 +88,11 @@
     <h1>Fokus für YouTube</h1>
     <p>Deine Zeit gehört dir.</p>
   </header>
+
+  <div id="lockbar" hidden>
+    Die Einstellungen sind gesperrt. Zum Ändern musst du erst warten und dieses Fenster offen lassen.
+    <button id="unlock" class="ghost"></button>
+  </div>
 
   <div class="section">
     <div class="row">
@@ -77,8 +108,12 @@
       <input type="checkbox" id="hideHomeFeed">
     </div>
     <div class="row">
-      <span>Strikter Modus<small>Kein „trotzdem ansehen"-Button</small></span>
-      <input type="checkbox" id="strictMode">
+      <span>YouTube Music sperren<small>music.youtube.com komplett</small></span>
+      <input type="checkbox" id="blockYtMusic">
+    </div>
+    <div class="row">
+      <span>Google-Suche filtern<small>Blockierte Begriffe auch bei Google</small></span>
+      <input type="checkbox" id="filterGoogle">
     </div>
     <div class="row">
       <span>Music/Premium-Links ausblenden<small>„Mehr von YouTube" in der Seitenleiste</small></span>
@@ -90,10 +125,34 @@
     </div>
   </div>
 
-  <div class="section" style="border-top:1px solid rgba(240,235,222,0.15);">
+  <div class="section">
+    <div class="row">
+      <span>Strikter Modus<small>Kein „trotzdem ansehen"-Button</small></span>
+      <input type="checkbox" id="strictMode">
+    </div>
+    <div class="row">
+      <span>Wartezeit<small>Sekunden bis „trotzdem ansehen"</small></span>
+      <input type="number" id="waitSeconds" min="5" max="600" step="5">
+    </div>
+    <div class="row">
+      <span>Einstellungen sperren<small>Ändern erst nach Wartezeit möglich</small></span>
+      <input type="checkbox" id="lockSettings">
+    </div>
+    <div class="row">
+      <span>Sperrzeit<small>Sekunden Wartezeit vor dem Ändern</small></span>
+      <select id="lockSeconds">
+        <option value="30">30</option>
+        <option value="60">60</option>
+        <option value="120">120</option>
+        <option value="300">300</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="row">
       <span>Feed-Filter<small>Empfehlungen auf Start- &amp; Videoseiten</small></span>
-      <select id="feedFilter" style="background:#0b3232;color:#f0ebde;border:1px solid rgba(240,235,222,0.2);border-radius:6px;padding:5px 8px;font-size:0.8rem;">
+      <select id="feedFilter">
         <option value="off">Aus</option>
         <option value="blocklist">Blockierte entfernen</option>
         <option value="whitelist">Nur erlaubte Themen</option>
@@ -111,10 +170,16 @@
   <div class="section">
     <label class="kw" for="keywords">Blockierte Begriffe (einer pro Zeile):</label>
     <textarea id="keywords" spellcheck="false"></textarea>
+    <p class="hint">
+      Kurze Begriffe (bis 4 Zeichen) zählen nur am Wortanfang.
+      Mit <code>=</code> davor zählt nur das ganze Wort: <code>=rap</code> trifft „Rap", aber nicht „Graph".
+    </p>
     <button id="save">Speichern</button>
+    <button id="reset" class="ghost">Standardlisten wiederherstellen</button>
     <div id="saved"></div>
   </div>
 
+  <script src="shared.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
