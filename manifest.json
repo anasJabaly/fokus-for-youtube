@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fokus für YouTube",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Blockiert Musik- und Unterhaltungsinhalte auf YouTube und schenkt dir einen Moment der Achtsamkeit, bevor Zeit verloren geht.",
   "minimum_chrome_version": "111",
   "permissions": ["storage"],
